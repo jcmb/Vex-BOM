@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Version: 1.1.1 -->
+<!-- Version: 1.1.2 -->
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -499,8 +499,12 @@
             const blob = new Blob([payload], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
+            const updatedFile = document.getElementById('candidateFileInput')?.files?.[0];
+            const updatedName = updatedFile
+                ? updatedFile.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9._-]+/g, '-')
+                : 'updated';
             link.href = url;
-            link.download = `vex-notes-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.json`;
+            link.download = `vex-notes-${updatedName}-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.json`;
             link.click();
             URL.revokeObjectURL(url);
             annotationsDirty = false;
