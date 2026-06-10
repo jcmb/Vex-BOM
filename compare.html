@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Version: 1.0.13 -->
+<!-- Version: 1.1.1 -->
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -117,6 +117,23 @@
             background: var(--panel-bg);
             color: var(--text-color);
         }
+        .load-row button {
+            padding: 8px 10px;
+            border: 1px solid var(--input-border);
+            border-radius: 4px;
+            background: var(--panel-bg);
+            color: var(--text-color);
+            cursor: pointer;
+        }
+        .load-row button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .notes-state {
+            font-size: 12px;
+            font-weight: 600;
+            color: #666;
+        }
         table {
             width: 100%;
             border-collapse: collapse;
@@ -155,6 +172,42 @@
         #vulnTable th:nth-child(6) { min-width: 106px; }
         #vulnTable th:nth-child(7) { min-width: 96px; }
         #vulnTable th:nth-child(8) { min-width: 86px; }
+        .annotation-cell {
+            min-width: 280px;
+            white-space: normal;
+            vertical-align: top;
+        }
+        .annotation-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .annotation-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .annotation-row label {
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .annotation-panel textarea {
+            width: 100%;
+            min-height: 60px;
+            resize: vertical;
+            font-size: 12px;
+            font-family: inherit;
+            padding: 6px;
+            border-radius: 4px;
+            border: 1px solid var(--input-border);
+            background: var(--panel-bg);
+            color: var(--text-color);
+        }
+        .annotation-meta {
+            font-size: 11px;
+            color: #666;
+        }
         .badge {
             padding: 3px 6px;
             border-radius: 12px;
@@ -241,6 +294,13 @@
                     <option value="dark">Dark</option>
                 </select>
             </div>
+            <div>
+                <button id="downloadNotesBtn" type="button" disabled>Download Notes JSON</button>
+                <button id="uploadNotesBtn" type="button">Upload Notes JSON</button>
+                <input id="uploadNotesInput" type="file" accept=".json,application/json" style="display:none;">
+            </div>
+            <div class="notes-state" id="notesDirtyState">No notes yet</div>
+            <div class="notes-state" id="notesMessage"></div>
         </div>
         <div class="change-row">
             <div>
@@ -297,6 +357,7 @@
             <col id="col-7" style="width: 138px;">
             <col id="col-8" style="width: 126px;">
             <col id="col-9" style="width: 18%;">
+            <col id="col-10" style="width: 300px;">
         </colgroup>
         <thead>
             <tr>
@@ -309,11 +370,12 @@
                 <th onclick="sortBy('justification')">Justification <span id="sort-justification">↕️</span></th>
                 <th onclick="sortBy('response')">Response <span id="sort-response">↕️</span></th>
                 <th>Detail</th>
+                <th>Annotations</th>
             </tr>
         </thead>
         <tbody>
             <tr>
-                <td colspan="9" style="text-align: center; padding: 20px;">Please load both Orginal and Updated CycloneDX VEX JSON files to compare vulnerabilities.</td>
+                <td colspan="10" style="text-align: center; padding: 20px;">Please load both Orginal and Updated CycloneDX VEX JSON files to compare vulnerabilities.</td>
             </tr>
         </tbody>
     </table>
@@ -323,8 +385,12 @@
         let baselineData = [];
         let candidateData = [];
         let comparisonData = [];
+        let annotationsByCve = {};
+        let annotationsDirty = false;
         let currentSortColumn = '';
         let sortAscending = true;
+        const NOTES_FORMAT = 'vex-compare-notes';
+        const NOTES_VERSION = 1;
         const minColumnWidths = {
             1: 52,
             2: 72,
@@ -334,7 +400,8 @@
             6: 96,
             7: 110,
             8: 84,
-            9: 180
+            9: 180,
+            10: 240
         };
 
         function applyTheme(theme) {
@@ -361,6 +428,117 @@
 
         function formatCveId(value) {
             return value.replace(/^CVE-/i, '');
+        }
+
+        function escapeHtml(value) {
+            return value
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#39;');
+        }
+
+        function getDefaultAnnotation() {
+            return {
+                status: 'open',
+                needsFollowUp: false,
+                comment: '',
+                updatedAt: ''
+            };
+        }
+
+        function getAnnotation(cveId) {
+            return annotationsByCve[cveId] || getDefaultAnnotation();
+        }
+
+        function setNotesMessage(message, isError = false) {
+            const target = document.getElementById('notesMessage');
+            target.innerText = message;
+            target.style.color = isError ? '#b42318' : '#666';
+        }
+
+        function updateNotesUiState() {
+            const dirtyEl = document.getElementById('notesDirtyState');
+            const hasNotes = Object.keys(annotationsByCve).length > 0;
+            document.getElementById('downloadNotesBtn').disabled = !hasNotes;
+
+            if (!hasNotes) {
+                dirtyEl.innerText = 'No notes yet';
+                return;
+            }
+            dirtyEl.innerText = annotationsDirty ? 'Unsaved notes: export JSON to keep changes' : 'Notes loaded/exported';
+        }
+
+        function upsertAnnotation(cveId, updates) {
+            const current = getAnnotation(cveId);
+            annotationsByCve[cveId] = {
+                ...current,
+                ...updates,
+                updatedAt: new Date().toISOString()
+            };
+            annotationsDirty = true;
+            updateNotesUiState();
+        }
+
+        function buildNotesExport() {
+            return {
+                format: NOTES_FORMAT,
+                version: NOTES_VERSION,
+                exportedAt: new Date().toISOString(),
+                annotations: annotationsByCve
+            };
+        }
+
+        function triggerNotesDownload() {
+            if (Object.keys(annotationsByCve).length === 0) {
+                setNotesMessage('No annotations to export.', true);
+                return;
+            }
+            const payload = JSON.stringify(buildNotesExport(), null, 2);
+            const blob = new Blob([payload], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `vex-notes-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.json`;
+            link.click();
+            URL.revokeObjectURL(url);
+            annotationsDirty = false;
+            updateNotesUiState();
+            setNotesMessage('Notes exported.');
+        }
+
+        async function importNotesFile(file) {
+            if (!file) return;
+            try {
+                const text = await readFileAsText(file);
+                const parsed = JSON.parse(text);
+                if (parsed.format !== NOTES_FORMAT || parsed.version !== NOTES_VERSION || typeof parsed.annotations !== 'object' || parsed.annotations === null || Array.isArray(parsed.annotations)) {
+                    throw new Error('Unsupported notes file format.');
+                }
+
+                let mergedCount = 0;
+                let ignoredCount = 0;
+                Object.entries(parsed.annotations).forEach(([cveId, note]) => {
+                    if (!note || typeof note !== 'object' || Array.isArray(note)) {
+                        ignoredCount += 1;
+                        return;
+                    }
+                    const status = typeof note.status === 'string' ? note.status : 'open';
+                    const needsFollowUp = typeof note.needsFollowUp === 'boolean' ? note.needsFollowUp : false;
+                    const comment = typeof note.comment === 'string' ? note.comment : '';
+                    const updatedAt = typeof note.updatedAt === 'string' ? note.updatedAt : '';
+                    annotationsByCve[cveId] = { status, needsFollowUp, comment, updatedAt };
+                    mergedCount += 1;
+                });
+
+                annotationsDirty = false;
+                updateNotesUiState();
+                renderTable();
+                setNotesMessage(`Imported ${mergedCount} note(s). Ignored ${ignoredCount}.`, ignoredCount > 0);
+            } catch (error) {
+                setNotesMessage(`Import failed: ${error.message}`, true);
+            }
         }
 
         function parseVulnerabilities(vulnerabilities) {
@@ -430,8 +608,9 @@
 
         function resetComparisonState() {
             comparisonData = [];
-            updateCounts();
+            updateCounts(null);
             populateFilterOptions();
+            updateNotesUiState();
             renderTable('Please load both Orginal and Updated CycloneDX VEX JSON files to compare vulnerabilities.');
         }
 
@@ -441,7 +620,7 @@
                 return;
             }
             comparisonData = computeComparison(baselineData, candidateData);
-            updateCounts();
+            updateCounts(null);
             populateFilterOptions();
             renderTable();
         }
@@ -481,9 +660,16 @@
             });
         }
 
-        function updateCounts() {
+        function updateCounts(filters) {
             const counts = { added: 0, removed: 0, changed: 0, unchanged: 0 };
-            comparisonData.forEach(item => {
+            const sourceData = filters
+                ? comparisonData.filter(item => {
+                    const record = getDisplayRecord(item);
+                    return Object.entries(filters).every(([key, value]) => value === 'all' || record[key] === value);
+                })
+                : comparisonData;
+
+            sourceData.forEach(item => {
                 counts[item.changeType] = (counts[item.changeType] || 0) + 1;
             });
 
@@ -526,8 +712,12 @@
         });
         document.getElementById('baselineFileInput').addEventListener('change', () => handleFileInput('baselineFileInput', 'Baseline'));
         document.getElementById('candidateFileInput').addEventListener('change', () => handleFileInput('candidateFileInput', 'Candidate'));
+        document.getElementById('downloadNotesBtn').addEventListener('click', triggerNotesDownload);
+        document.getElementById('uploadNotesBtn').addEventListener('click', () => document.getElementById('uploadNotesInput').click());
+        document.getElementById('uploadNotesInput').addEventListener('change', event => importNotesFile(event.target.files[0]));
         initTheme();
         initColumnResizing();
+        updateNotesUiState();
 
         function initColumnResizing() {
             const table = document.getElementById('vulnTable');
@@ -605,6 +795,7 @@
                 justification: document.getElementById('filterJustification').value,
                 response: document.getElementById('filterResponse').value
             };
+            updateCounts(filters);
             const selectedChangeTypes = new Set(
                 [
                     ['added', document.getElementById('filterAdded').checked],
@@ -615,7 +806,7 @@
             );
 
             if (comparisonData.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:20px;">${emptyMessage || 'No comparison results available.'}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:20px;">${emptyMessage || 'No comparison results available.'}</td></tr>`;
                 return;
             }
 
@@ -659,11 +850,12 @@
 
             tbody.innerHTML = '';
             if (filteredData.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;">No comparison results match the current filters.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;">No comparison results match the current filters.</td></tr>';
                 return;
             }
 
             filteredData.forEach(item => {
+                const annotation = getAnnotation(item.id);
                 const topRecord = item.newValue || null;
                 const bottomRecord = item.oldValue || null;
                 const description = (item.newValue || item.oldValue).description;
@@ -691,6 +883,23 @@
                     <td>${isDifferent('justification') ? renderFieldValue(topRecord, 'justification') : ''}</td>
                     <td>${isDifferent('response') ? renderFieldValue(topRecord, 'response') : ''}</td>
                     <td class="detail-cell">${isDifferent('detail') ? renderFieldValue(topRecord, 'detail') : ''}</td>
+                    <td rowspan="3" class="annotation-cell">
+                        <div class="annotation-panel" data-cve="${escapeHtml(item.id)}">
+                            <div class="annotation-row">
+                                <label><input type="checkbox" class="annotation-follow-up" data-cve="${escapeHtml(item.id)}" ${annotation.needsFollowUp ? 'checked' : ''}> Follow-up</label>
+                                <label>Status:
+                                    <select class="annotation-status" data-cve="${escapeHtml(item.id)}">
+                                        <option value="open" ${annotation.status === 'open' ? 'selected' : ''}>Open</option>
+                                        <option value="in_progress" ${annotation.status === 'in_progress' ? 'selected' : ''}>In progress</option>
+                                        <option value="resolved" ${annotation.status === 'resolved' ? 'selected' : ''}>Resolved</option>
+                                        <option value="blocked" ${annotation.status === 'blocked' ? 'selected' : ''}>Blocked</option>
+                                    </select>
+                                </label>
+                            </div>
+                            <textarea class="annotation-comment" data-cve="${escapeHtml(item.id)}" placeholder="Comment, issue notes, or follow-up details...">${escapeHtml(annotation.comment)}</textarea>
+                            <div class="annotation-meta">Updated: ${annotation.updatedAt ? new Date(annotation.updatedAt).toLocaleString() : 'Never'}</div>
+                        </div>
+                    </td>
                 `;
                 tbody.appendChild(topRow);
 
@@ -715,6 +924,29 @@
                     <td class="detail-cell">${isDifferent('detail') ? renderFieldValue(bottomRecord, 'detail') : ''}</td>
                 `;
                 tbody.appendChild(bottomRow);
+            });
+
+            tbody.querySelectorAll('.annotation-follow-up').forEach(input => {
+                input.addEventListener('change', event => {
+                    const cveId = event.target.dataset.cve;
+                    upsertAnnotation(cveId, { needsFollowUp: event.target.checked });
+                    renderTable();
+                });
+            });
+
+            tbody.querySelectorAll('.annotation-status').forEach(select => {
+                select.addEventListener('change', event => {
+                    const cveId = event.target.dataset.cve;
+                    upsertAnnotation(cveId, { status: event.target.value });
+                    renderTable();
+                });
+            });
+
+            tbody.querySelectorAll('.annotation-comment').forEach(textarea => {
+                textarea.addEventListener('input', event => {
+                    const cveId = event.target.dataset.cve;
+                    upsertAnnotation(cveId, { comment: event.target.value });
+                });
             });
         }
     </script>

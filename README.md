@@ -46,6 +46,42 @@ Each vulnerability is displayed across 3 rows:
 - Draggable table column resizers
 - Horizontal scroll when total column width exceeds viewport
 
+### Follow-up annotations
+
+The compare page supports per-CVE follow-up tracking.
+
+- Add/update annotation data in the `Annotations` column:
+  - `Follow-up` toggle
+  - `Status` (`open`, `in_progress`, `resolved`, `blocked`)
+  - free-text `Comment`
+- Annotation state is keyed by CVE ID and remains visible while sorting/filtering.
+
+### Notes JSON import/export
+
+Annotations are persisted with explicit JSON files.
+
+- `Download Notes JSON` exports all annotations currently in memory.
+- `Upload Notes JSON` imports and merges notes by CVE ID.
+- Invalid entries are ignored with feedback in the UI.
+
+Schema shape:
+
+```json
+{
+  "format": "vex-compare-notes",
+  "version": 1,
+  "exportedAt": "2026-06-10T19:40:00.000Z",
+  "annotations": {
+    "CVE-2024-12345": {
+      "status": "in_progress",
+      "needsFollowUp": true,
+      "comment": "Need vendor confirmation on mitigation timeline.",
+      "updatedAt": "2026-06-10T19:38:20.000Z"
+    }
+  }
+}
+```
+
 ## Data expectations
 
 Both pages expect CycloneDX JSON files with:
