@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<!-- Version: 1.0.13 -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CycloneDX VEX Viewer</title>
+    <style>
+        body {
+            --bg-color: #f9f9f9;
+            --text-color: #333;
+            --heading-color: #444;
+            --panel-bg: #fff;
+            --border-color: #ddd;
+            --input-border: #ccc;
+            --th-bg: #f1f1f1;
+            --th-hover-bg: #e2e2e2;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+        }
+        @media (prefers-color-scheme: dark) {
+            body:not([data-theme]) {
+                --bg-color: #101317;
+                --text-color: #e3e7eb;
+                --heading-color: #f0f2f5;
+                --panel-bg: #171c21;
+                --border-color: #2a3139;
+                --input-border: #3a444f;
+                --th-bg: #1f252c;
+                --th-hover-bg: #2a323b;
+            }
+        }
+        body[data-theme='light'] {
+            --bg-color: #f9f9f9;
+            --text-color: #333;
+            --heading-color: #444;
+            --panel-bg: #fff;
+            --border-color: #ddd;
+            --input-border: #ccc;
+            --th-bg: #f1f1f1;
+            --th-hover-bg: #e2e2e2;
+        }
+        body[data-theme='dark'] {
+            --bg-color: #101317;
+            --text-color: #e3e7eb;
+            --heading-color: #f0f2f5;
+            --panel-bg: #171c21;
+            --border-color: #2a3139;
+            --input-border: #3a444f;
+            --th-bg: #1f252c;
+            --th-hover-bg: #2a323b;
+        }
+        h1 {
+            color: var(--heading-color);
+        }
+        .controls {
+            background: var(--panel-bg);
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .controls .load-row {
+            width: 100%;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            align-items: center;
+        }
+        .controls .change-row {
+            width: 100%;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+        }
+        .controls .filters-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            align-items: center;
+            width: 100%;
+        }
+        .change-type-filters {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .change-type-filters label {
+            display: inline-flex;
+            gap: 6px;
+            align-items: center;
+            font-weight: 600;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 999px;
+            padding: 6px 10px;
+        }
+        .count-pill {
+            font-size: 12px;
+            color: #555;
+        }
+        .row-source {
+            font-weight: 600;
+            color: #555;
+        }
+        .controls input, .controls select {
+            padding: 8px;
+            border: 1px solid var(--input-border);
+            border-radius: 4px;
+            background: var(--panel-bg);
+            color: var(--text-color);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--panel-bg);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+            table-layout: fixed;
+        }
+        th, td {
+            padding: 4px 5px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 13px;
+            vertical-align: top;
+        }
+        th {
+            background-color: var(--th-bg);
+            font-weight: 600;
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+        }
+        th:hover {
+            background-color: var(--th-hover-bg);
+        }
+        td[rowspan] { vertical-align: top; }
+        th span {
+            font-size: 12px;
+            margin-left: 5px;
+            display: inline;
+        }
+        #vulnTable th:nth-child(1) { min-width: 62px; }
+        #vulnTable th:nth-child(2) { min-width: 74px; }
+        #vulnTable th:nth-child(5) { min-width: 78px; }
+        #vulnTable th:nth-child(6) { min-width: 106px; }
+        #vulnTable th:nth-child(7) { min-width: 96px; }
+        #vulnTable th:nth-child(8) { min-width: 86px; }
+        .badge {
+            padding: 3px 6px;
+            border-radius: 12px;
+            font-weight: bold;
+            font-size: 11px;
+            text-transform: capitalize;
+            display: inline-block;
+            text-align: center;
+            min-width: 42px;
+        }
+        .sev-critical { background-color: #dc3545; color: white; }
+        .sev-high { background-color: #fd7e14; color: white; }
+        .sev-medium { background-color: #ffc107; color: black; }
+        .sev-low { background-color: #ffda6a; color: black; }
+        .sev-none { background-color: #28a745; color: white; }
+        .sev-unknown { background-color: #6c757d; color: white; }
+        .change-added { background-color: #28a745; color: white; }
+        .change-removed { background-color: #dc3545; color: white; }
+        .change-changed { background-color: #0d6efd; color: white; }
+        .change-unchanged { background-color: #6c757d; color: white; }
+        .description-cell {
+            white-space: normal;
+            overflow-wrap: break-word;
+            word-break: normal;
+        }
+        .cve-column, .cve-cell {
+            white-space: nowrap;
+        }
+        #vulnTable td.detail-cell {
+            white-space: normal !important;
+            overflow-wrap: anywhere !important;
+            word-break: break-word !important;
+            hyphens: auto;
+        }
+        .col-resize-handle {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 8px;
+            height: 100%;
+            cursor: col-resize;
+            user-select: none;
+            touch-action: none;
+        }
+        .col-resize-handle:hover {
+            background: rgba(120, 120, 120, 0.35);
+        }
+        .is-resizing {
+            cursor: col-resize !important;
+            user-select: none !important;
+        }
+        #vulnTable th:nth-child(1), #vulnTable td:nth-child(1),
+        #vulnTable th:nth-child(2), #vulnTable td:nth-child(2),
+        #vulnTable th:nth-child(4), #vulnTable td:nth-child(4),
+        #vulnTable th:nth-child(5), #vulnTable td:nth-child(5),
+        #vulnTable th:nth-child(6), #vulnTable td:nth-child(6),
+        #vulnTable th:nth-child(7), #vulnTable td:nth-child(7),
+        #vulnTable th:nth-child(8), #vulnTable td:nth-child(8) {
+            white-space: nowrap;
+        }
+        .table-wrap {
+            overflow-x: auto;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <h1>CycloneDX Vulnerability (VEX) Compare</h1>
+    <div class="controls">
+        <div class="load-row">
+            <div>
+                <label for="baselineFileInput"><b>Orginal VEX JSON:</b></label>
+                <input type="file" id="baselineFileInput" accept=".json">
+            </div>
+            <div>
+                <label for="candidateFileInput"><b>Updated VEX JSON:</b></label>
+                <input type="file" id="candidateFileInput" accept=".json">
+            </div>
+            <div>
+                <label for="themeSelect"><b>Theme:</b></label>
+                <select id="themeSelect">
+                    <option value="system">System</option>
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                </select>
+            </div>
+        </div>
+        <div class="change-row">
+            <div>
+                <div class="change-type-filters">
+                    <label for="filterAdded"><input type="checkbox" id="filterAdded" checked> Added <span class="count-pill">(<span id="count-added">0</span>)</span></label>
+                    <label for="filterRemoved"><input type="checkbox" id="filterRemoved"> Removed <span class="count-pill">(<span id="count-removed">0</span>)</span></label>
+                    <label for="filterChanged"><input type="checkbox" id="filterChanged" checked> Changed <span class="count-pill">(<span id="count-changed">0</span>)</span></label>
+                    <label for="filterUnchanged"><input type="checkbox" id="filterUnchanged"> Unchanged <span class="count-pill">(<span id="count-unchanged">0</span>)</span></label>
+                </div>
+            </div>
+        </div>
+        <div class="filters-row">
+            <div>
+                <label for="filterSeverity"><b>Severity:</b></label>
+                <select id="filterSeverity">
+                    <option value="all">All</option>
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                    <option value="none">None</option>
+                    <option value="unknown">Unknown</option>
+                </select>
+            </div>
+            <div>
+                <label for="filterState"><b>Analysis:</b></label>
+                <select id="filterState">
+                    <option value="all">All</option>
+                </select>
+            </div>
+            <div>
+                <label for="filterJustification"><b>Justification:</b></label>
+                <select id="filterJustification">
+                    <option value="all">All</option>
+                </select>
+            </div>
+            <div>
+                <label for="filterResponse"><b>Response:</b></label>
+                <select id="filterResponse">
+                    <option value="all">All</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    <div class="table-wrap">
+    <table id="vulnTable">
+        <colgroup>
+            <col id="col-1" style="width: 84px;">
+            <col id="col-2" style="width: 110px;">
+            <col id="col-3" style="width: 46%;">
+            <col id="col-4" style="width: 92px;">
+            <col id="col-5" style="width: 102px;">
+            <col id="col-6" style="width: 148px;">
+            <col id="col-7" style="width: 138px;">
+            <col id="col-8" style="width: 126px;">
+            <col id="col-9" style="width: 18%;">
+        </colgroup>
+        <thead>
+            <tr>
+                <th onclick="sortBy('changeType')">Change <span id="sort-changeType">↕️</span></th>
+                <th class="cve-column" onclick="sortBy('id')">CVE ID <span id="sort-id">↕️</span></th>
+                <th>Description</th>
+                <th>Source</th>
+                <th onclick="sortBy('severity')">Severity <span id="sort-severity">↕️</span></th>
+                <th onclick="sortBy('state')">Analysis State <span id="sort-state">↕️</span></th>
+                <th onclick="sortBy('justification')">Justification <span id="sort-justification">↕️</span></th>
+                <th onclick="sortBy('response')">Response <span id="sort-response">↕️</span></th>
+                <th>Detail</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td colspan="9" style="text-align: center; padding: 20px;">Please load both Orginal and Updated CycloneDX VEX JSON files to compare vulnerabilities.</td>
+            </tr>
+        </tbody>
+    </table>
+    </div>
+
+    <script>
+        let baselineData = [];
+        let candidateData = [];
+        let comparisonData = [];
+        let currentSortColumn = '';
+        let sortAscending = true;
+        const minColumnWidths = {
+            1: 52,
+            2: 72,
+            3: 360,
+            4: 64,
+            5: 72,
+            6: 96,
+            7: 110,
+            8: 84,
+            9: 180
+        };
+
+        function applyTheme(theme) {
+            if (theme === 'system') {
+                document.body.removeAttribute('data-theme');
+            } else {
+                document.body.setAttribute('data-theme', theme);
+            }
+            localStorage.setItem('vexCompareTheme', theme);
+        }
+
+        function initTheme() {
+            const savedTheme = localStorage.getItem('vexCompareTheme') || 'system';
+            const themeSelect = document.getElementById('themeSelect');
+            themeSelect.value = savedTheme;
+            applyTheme(savedTheme);
+            themeSelect.addEventListener('change', () => applyTheme(themeSelect.value));
+        }
+
+        function normalizeText(value) {
+            const normalized = value === undefined || value === null ? 'N/A' : String(value).trim();
+            return normalized.length ? normalized : 'N/A';
+        }
+
+        function formatCveId(value) {
+            return value.replace(/^CVE-/i, '');
+        }
+
+        function parseVulnerabilities(vulnerabilities) {
+            return vulnerabilities.map(v => {
+                const rating = (v.ratings && v.ratings.length > 0) ? v.ratings[0] : {};
+                const analysis = v.analysis || {};
+                const response = Array.isArray(analysis.response) ? analysis.response.join(', ') : analysis.response;
+
+                return {
+                    id: normalizeText(v.id),
+                    severity: normalizeText(rating.severity).toLowerCase(),
+                    description: normalizeText(v.description),
+                    state: normalizeText(analysis.state).toLowerCase(),
+                    justification: normalizeText(analysis.justification).toLowerCase(),
+                    response: normalizeText(response).toLowerCase(),
+                    detail: normalizeText(analysis.detail)
+                };
+            });
+        }
+
+        function getDisplayRecord(result) {
+            return result.newValue || result.oldValue;
+        }
+
+        function getChangeWeight(changeType) {
+            const weights = { added: 3, removed: 2, changed: 1, unchanged: 0 };
+            return weights[changeType] ?? -1;
+        }
+
+        function readFileAsText(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = e => resolve(e.target.result);
+                reader.onerror = () => reject(new Error('Unable to read file.'));
+                reader.readAsText(file);
+            });
+        }
+
+        async function handleFileInput(fileInputId, targetLabel) {
+            const input = document.getElementById(fileInputId);
+            const file = input.files[0];
+            if (!file) {
+                if (targetLabel === 'Baseline') baselineData = [];
+                if (targetLabel === 'Candidate') candidateData = [];
+                resetComparisonState();
+                return;
+            }
+
+            try {
+                const text = await readFileAsText(file);
+                const data = JSON.parse(text);
+                if (data.bomFormat !== 'CycloneDX' || !Array.isArray(data.vulnerabilities)) {
+                    throw new Error(`${targetLabel} file is not a valid CycloneDX VEX with vulnerabilities.`);
+                }
+
+                const parsed = parseVulnerabilities(data.vulnerabilities);
+                if (targetLabel === 'Baseline') baselineData = parsed;
+                if (targetLabel === 'Candidate') candidateData = parsed;
+                compareIfReady();
+            } catch (error) {
+                alert(`${targetLabel} file error: ${error.message}`);
+                if (targetLabel === 'Baseline') baselineData = [];
+                if (targetLabel === 'Candidate') candidateData = [];
+                resetComparisonState();
+            }
+        }
+
+        function resetComparisonState() {
+            comparisonData = [];
+            updateCounts();
+            populateFilterOptions();
+            renderTable('Please load both Orginal and Updated CycloneDX VEX JSON files to compare vulnerabilities.');
+        }
+
+        function compareIfReady() {
+            if (!baselineData.length || !candidateData.length) {
+                resetComparisonState();
+                return;
+            }
+            comparisonData = computeComparison(baselineData, candidateData);
+            updateCounts();
+            populateFilterOptions();
+            renderTable();
+        }
+
+        function computeComparison(baselineRows, candidateRows) {
+            const baselineMap = new Map(baselineRows.map(row => [row.id, row]));
+            const candidateMap = new Map(candidateRows.map(row => [row.id, row]));
+            const allIds = [...new Set([...baselineMap.keys(), ...candidateMap.keys()])];
+            const compareFields = ['severity', 'description', 'state', 'justification', 'response', 'detail'];
+
+            return allIds.map(id => {
+                const oldValue = baselineMap.get(id) || null;
+                const newValue = candidateMap.get(id) || null;
+                let changeType = 'unchanged';
+                const fieldDiffs = [];
+
+                if (!oldValue && newValue) {
+                    changeType = 'added';
+                } else if (oldValue && !newValue) {
+                    changeType = 'removed';
+                } else {
+                    compareFields.forEach(field => {
+                        if (oldValue[field] !== newValue[field]) {
+                            fieldDiffs.push({
+                                field,
+                                old: oldValue[field],
+                                new: newValue[field]
+                            });
+                        }
+                    });
+                    if (fieldDiffs.length > 0) {
+                        changeType = 'changed';
+                    }
+                }
+
+                return { id, changeType, oldValue, newValue, fieldDiffs };
+            });
+        }
+
+        function updateCounts() {
+            const counts = { added: 0, removed: 0, changed: 0, unchanged: 0 };
+            comparisonData.forEach(item => {
+                counts[item.changeType] = (counts[item.changeType] || 0) + 1;
+            });
+
+            document.getElementById('count-added').innerText = counts.added;
+            document.getElementById('count-removed').innerText = counts.removed;
+            document.getElementById('count-changed').innerText = counts.changed;
+            document.getElementById('count-unchanged').innerText = counts.unchanged;
+        }
+
+        function populateFilterOptions() {
+            const fields = [
+                { id: 'filterState', key: 'state' },
+                { id: 'filterJustification', key: 'justification' },
+                { id: 'filterResponse', key: 'response' }
+            ];
+
+            fields.forEach(({ id, key }) => {
+                const select = document.getElementById(id);
+                const currentValue = select.value;
+                const uniqueValues = [...new Set(comparisonData.map(item => getDisplayRecord(item)?.[key]).filter(Boolean))].sort((a, b) =>
+                    a.toString().toLowerCase().localeCompare(b.toString().toLowerCase())
+                );
+
+                select.innerHTML = '<option value="all">All</option>';
+                uniqueValues.forEach(value => {
+                    const option = document.createElement('option');
+                    option.value = value;
+                    option.textContent = value;
+                    select.appendChild(option);
+                });
+
+                if (currentValue !== 'all' && uniqueValues.includes(currentValue)) {
+                    select.value = currentValue;
+                }
+            });
+        }
+
+        ['filterAdded', 'filterRemoved', 'filterChanged', 'filterUnchanged', 'filterSeverity', 'filterState', 'filterJustification', 'filterResponse'].forEach(id => {
+            document.getElementById(id).addEventListener('change', renderTable);
+        });
+        document.getElementById('baselineFileInput').addEventListener('change', () => handleFileInput('baselineFileInput', 'Baseline'));
+        document.getElementById('candidateFileInput').addEventListener('change', () => handleFileInput('candidateFileInput', 'Candidate'));
+        initTheme();
+        initColumnResizing();
+
+        function initColumnResizing() {
+            const table = document.getElementById('vulnTable');
+            const headers = table.querySelectorAll('thead th');
+
+            headers.forEach((th, index) => {
+                const colIndex = index + 1;
+                const handle = document.createElement('span');
+                handle.className = 'col-resize-handle';
+                handle.title = 'Drag to resize column';
+                th.appendChild(handle);
+
+                handle.addEventListener('mousedown', event => {
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    const col = document.getElementById(`col-${colIndex}`);
+                    if (!col) return;
+
+                    const startX = event.clientX;
+                    const startWidth = col.getBoundingClientRect().width;
+                    const minWidth = minColumnWidths[colIndex] || 60;
+
+                    document.body.classList.add('is-resizing');
+
+                    const onMouseMove = moveEvent => {
+                        const nextWidth = Math.max(minWidth, startWidth + (moveEvent.clientX - startX));
+                        col.style.width = `${nextWidth}px`;
+                    };
+
+                    const onMouseUp = () => {
+                        document.body.classList.remove('is-resizing');
+                        window.removeEventListener('mousemove', onMouseMove);
+                        window.removeEventListener('mouseup', onMouseUp);
+                    };
+
+                    window.addEventListener('mousemove', onMouseMove);
+                    window.addEventListener('mouseup', onMouseUp);
+                });
+            });
+        }
+
+        function getSeverityWeight(severity) {
+            const weights = {
+                'critical': 5,
+                'high': 4,
+                'medium': 3,
+                'low': 2,
+                'none': 1,
+                'unknown': 0
+            };
+            return weights[severity] ?? -1;
+        }
+
+        function sortBy(column) {
+            if (currentSortColumn === column) {
+                sortAscending = !sortAscending;
+            } else {
+                currentSortColumn = column;
+                sortAscending = true;
+            }
+
+            document.querySelectorAll('th span').forEach(span => span.innerText = '↕️');
+            const arrow = sortAscending ? '🔼' : '🔽';
+            document.getElementById(`sort-${column}`).innerText = arrow;
+
+            renderTable();
+        }
+
+        function renderTable(emptyMessage) {
+            const tbody = document.querySelector('#vulnTable tbody');
+            const filters = {
+                severity: document.getElementById('filterSeverity').value,
+                state: document.getElementById('filterState').value,
+                justification: document.getElementById('filterJustification').value,
+                response: document.getElementById('filterResponse').value
+            };
+            const selectedChangeTypes = new Set(
+                [
+                    ['added', document.getElementById('filterAdded').checked],
+                    ['removed', document.getElementById('filterRemoved').checked],
+                    ['changed', document.getElementById('filterChanged').checked],
+                    ['unchanged', document.getElementById('filterUnchanged').checked]
+                ].filter(([, checked]) => checked).map(([type]) => type)
+            );
+
+            if (comparisonData.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:20px;">${emptyMessage || 'No comparison results available.'}</td></tr>`;
+                return;
+            }
+
+            let filteredData = comparisonData.filter(item => {
+                const record = getDisplayRecord(item);
+                if (!selectedChangeTypes.has(item.changeType)) return false;
+                return Object.entries(filters).every(([key, value]) => {
+                    if (value === 'all') return true;
+                    return record[key] === value;
+                });
+            });
+
+            if (currentSortColumn) {
+                filteredData.sort((a, b) => {
+                    let valA;
+                    let valB;
+
+                    if (currentSortColumn === 'changeType') {
+                        valA = getChangeWeight(a.changeType);
+                        valB = getChangeWeight(b.changeType);
+                    } else {
+                        const recordA = getDisplayRecord(a);
+                        const recordB = getDisplayRecord(b);
+                        valA = recordA[currentSortColumn];
+                        valB = recordB[currentSortColumn];
+                    }
+
+                    if (currentSortColumn === 'severity') {
+                        valA = getSeverityWeight(valA);
+                        valB = getSeverityWeight(valB);
+                    } else {
+                        valA = valA.toString().toLowerCase();
+                        valB = valB.toString().toLowerCase();
+                    }
+
+                    if (valA < valB) return sortAscending ? -1 : 1;
+                    if (valA > valB) return sortAscending ? 1 : -1;
+                    return 0;
+                });
+            }
+
+            tbody.innerHTML = '';
+            if (filteredData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;">No comparison results match the current filters.</td></tr>';
+                return;
+            }
+
+            filteredData.forEach(item => {
+                const topRecord = item.newValue || null;
+                const bottomRecord = item.oldValue || null;
+                const description = (item.newValue || item.oldValue).description;
+                const isDifferent = field => {
+                    if (!topRecord && !bottomRecord) return false;
+                    if (!topRecord || !bottomRecord) return true;
+                    return topRecord[field] !== bottomRecord[field];
+                };
+                const renderFieldValue = (record, field) => {
+                    if (!record) return '';
+                    if (field === 'severity') {
+                        return `<span class="badge sev-${record.severity}">${record.severity}</span>`;
+                    }
+                    return record[field];
+                };
+
+                const topRow = document.createElement('tr');
+                topRow.innerHTML = `
+                    <td rowspan="3"><span class="badge change-${item.changeType}">${item.changeType}</span></td>
+                    <td rowspan="3" class="cve-cell"><strong>${formatCveId(item.id)}</strong></td>
+                    <td rowspan="3" class="description-cell">${description}</td>
+                    <td class="row-source">Updated</td>
+                    <td>${isDifferent('severity') ? renderFieldValue(topRecord, 'severity') : ''}</td>
+                    <td>${isDifferent('state') ? renderFieldValue(topRecord, 'state') : ''}</td>
+                    <td>${isDifferent('justification') ? renderFieldValue(topRecord, 'justification') : ''}</td>
+                    <td>${isDifferent('response') ? renderFieldValue(topRecord, 'response') : ''}</td>
+                    <td class="detail-cell">${isDifferent('detail') ? renderFieldValue(topRecord, 'detail') : ''}</td>
+                `;
+                tbody.appendChild(topRow);
+
+                const middleRow = document.createElement('tr');
+                middleRow.innerHTML = `
+                    <td class="row-source">Same</td>
+                    <td>${!isDifferent('severity') ? renderFieldValue(topRecord || bottomRecord, 'severity') : ''}</td>
+                    <td>${!isDifferent('state') ? renderFieldValue(topRecord || bottomRecord, 'state') : ''}</td>
+                    <td>${!isDifferent('justification') ? renderFieldValue(topRecord || bottomRecord, 'justification') : ''}</td>
+                    <td>${!isDifferent('response') ? renderFieldValue(topRecord || bottomRecord, 'response') : ''}</td>
+                    <td class="detail-cell">${!isDifferent('detail') ? renderFieldValue(topRecord || bottomRecord, 'detail') : ''}</td>
+                `;
+                tbody.appendChild(middleRow);
+
+                const bottomRow = document.createElement('tr');
+                bottomRow.innerHTML = `
+                    <td class="row-source">Original</td>
+                    <td>${isDifferent('severity') ? renderFieldValue(bottomRecord, 'severity') : ''}</td>
+                    <td>${isDifferent('state') ? renderFieldValue(bottomRecord, 'state') : ''}</td>
+                    <td>${isDifferent('justification') ? renderFieldValue(bottomRecord, 'justification') : ''}</td>
+                    <td>${isDifferent('response') ? renderFieldValue(bottomRecord, 'response') : ''}</td>
+                    <td class="detail-cell">${isDifferent('detail') ? renderFieldValue(bottomRecord, 'detail') : ''}</td>
+                `;
+                tbody.appendChild(bottomRow);
+            });
+        }
+    </script>
+</body>
+</html>

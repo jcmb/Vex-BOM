@@ -21,9 +21,18 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             margin-bottom: 20px;
             display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .controls .load-row {
+            width: 100%;
+        }
+        .controls .filters-row {
+            display: flex;
             flex-wrap: wrap;
             gap: 20px;
             align-items: center;
+            width: 100%;
         }
         .controls input, .controls select {
             padding: 8px;
@@ -57,7 +66,6 @@
             font-size: 12px;
             margin-left: 5px;
         }
-        /* Severity Badges */
         .badge {
             padding: 4px 8px;
             border-radius: 12px;
@@ -74,50 +82,49 @@
         .sev-low { background-color: #ffda6a; color: black; }
         .sev-none { background-color: #28a745; color: white; }
         .sev-unknown { background-color: #6c757d; color: white; }
-
         .description-cell {
             max-width: 300px;
         }
     </style>
 </head>
 <body>
-
     <h1>CycloneDX Vulnerability (VEX) Viewer</h1>
-
     <div class="controls">
-        <div>
+        <div class="load-row">
             <label for="fileInput"><b>Load VEX JSON:</b></label>
             <input type="file" id="fileInput" accept=".json">
         </div>
-        <div>
-            <label for="filterSeverity"><b>Filter by Severity:</b></label>
-            <select id="filterSeverity">
-                <option value="all">All</option>
-                <option value="critical">Critical</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
-                <option value="none">None</option>
-                <option value="unknown">Unknown</option>
-            </select>
-        </div>
-        <div>
-            <label for="filterState"><b>Filter by Analysis:</b></label>
-            <select id="filterState">
-                <option value="all">All</option>
-            </select>
-        </div>
-        <div>
-            <label for="filterJustification"><b>Filter by Justification:</b></label>
-            <select id="filterJustification">
-                <option value="all">All</option>
-            </select>
-        </div>
-        <div>
-            <label for="filterResponse"><b>Filter by Response:</b></label>
-            <select id="filterResponse">
-                <option value="all">All</option>
-            </select>
+        <div class="filters-row">
+            <div>
+                <label for="filterSeverity"><b>Severity:</b></label>
+                <select id="filterSeverity">
+                    <option value="all">All</option>
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                    <option value="none">None</option>
+                    <option value="unknown">Unknown</option>
+                </select>
+            </div>
+            <div>
+                <label for="filterState"><b>Analysis:</b></label>
+                <select id="filterState">
+                    <option value="all">All</option>
+                </select>
+            </div>
+            <div>
+                <label for="filterJustification"><b>Justification:</b></label>
+                <select id="filterJustification">
+                    <option value="all">All</option>
+                </select>
+            </div>
+            <div>
+                <label for="filterResponse"><b>Response:</b></label>
+                <select id="filterResponse">
+                    <option value="all">All</option>
+                </select>
+            </div>
         </div>
     </div>
 
@@ -145,49 +152,64 @@
         let currentSortColumn = '';
         let sortAscending = true;
 
-        // Listen for file upload
-        document.getElementById('fileInput').addEventListener('change', function(event) {
-            const file = event.target.files[0];
-            if (!file) return;
+        function normalizeText(value) {
+            const normalized = value === undefined || value === null ? 'N/A' : String(value).trim();
+            return normalized.length ? normalized : 'N/A';
+        }
 
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                try {
-                    const data = JSON.parse(e.target.result);
+        function parseVulnerabilities(vulnerabilities) {
+            return vulnerabilities.map(v => {
+                const rating = (v.ratings && v.ratings.length > 0) ? v.ratings[0] : {};
+                const analysis = v.analysis || {};
+                const response = Array.isArray(analysis.response) ? analysis.response.join(', ') : analysis.response;
 
-                    // Basic Validation for CycloneDX
-                    if (data.bomFormat !== "CycloneDX" || !data.vulnerabilities) {
-                        alert("Invalid file format. Please upload a valid CycloneDX JSON file containing vulnerabilities.");
-                        return;
-                    }
+                return {
+                    id: normalizeText(v.id),
+                    severity: normalizeText(rating.severity).toLowerCase(),
+                    description: normalizeText(v.description),
+                    state: normalizeText(analysis.state).toLowerCase(),
+                    justification: normalizeText(analysis.justification).toLowerCase(),
+                    response: normalizeText(response).toLowerCase(),
+                    detail: normalizeText(analysis.detail)
+                };
+            });
+        }
 
-                    // Map the data into an easier-to-manage array
-                    vulnerabilitiesData = data.vulnerabilities.map(v => {
-                        const rating = (v.ratings && v.ratings.length > 0) ? v.ratings[0] : {};
-                        const analysis = v.analysis || {};
-                        const response = analysis.response ? analysis.response.join(', ') : 'N/A';
+        function readFileAsText(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = e => resolve(e.target.result);
+                reader.onerror = () => reject(new Error('Unable to read file.'));
+                reader.readAsText(file);
+            });
+        }
 
-                        return {
-                            id: v.id || 'N/A',
-                            severity: (rating.severity || 'unknown').toLowerCase(),
-                            description: v.description || 'N/A',
-                            state: analysis.state || 'N/A',
-                            justification: analysis.justification || 'N/A',
-                            response: response,
-                            detail: analysis.detail || 'N/A'
-                        };
-                    });
+        async function handleFileInput() {
+            const file = document.getElementById('fileInput').files[0];
+            if (!file) {
+                vulnerabilitiesData = [];
+                populateFilterOptions();
+                renderTable('Please load a CycloneDX VEX JSON file to view vulnerabilities.');
+                return;
+            }
 
-                    populateFilterOptions();
-                    renderTable();
-                } catch (error) {
-                    alert("Error reading JSON: " + error.message);
+            try {
+                const text = await readFileAsText(file);
+                const data = JSON.parse(text);
+                if (data.bomFormat !== 'CycloneDX' || !Array.isArray(data.vulnerabilities)) {
+                    throw new Error('Invalid file format. Please upload a valid CycloneDX JSON file containing vulnerabilities.');
                 }
-            };
-            reader.readAsText(file);
-        });
+                vulnerabilitiesData = parseVulnerabilities(data.vulnerabilities);
+                populateFilterOptions();
+                renderTable();
+            } catch (error) {
+                alert(error.message);
+                vulnerabilitiesData = [];
+                populateFilterOptions();
+                renderTable('Please load a CycloneDX VEX JSON file to view vulnerabilities.');
+            }
+        }
 
-        // Populate dynamic filter dropdowns from loaded data
         function populateFilterOptions() {
             const fields = [
                 { id: 'filterState', key: 'state' },
@@ -198,7 +220,7 @@
             fields.forEach(({ id, key }) => {
                 const select = document.getElementById(id);
                 const currentValue = select.value;
-                const uniqueValues = [...new Set(vulnerabilitiesData.map(v => v[key]))].sort((a, b) =>
+                const uniqueValues = [...new Set(vulnerabilitiesData.map(v => v[key]).filter(Boolean))].sort((a, b) =>
                     a.toString().toLowerCase().localeCompare(b.toString().toLowerCase())
                 );
 
@@ -216,12 +238,11 @@
             });
         }
 
-        // Listen for filter changes
         ['filterSeverity', 'filterState', 'filterJustification', 'filterResponse'].forEach(id => {
             document.getElementById(id).addEventListener('change', renderTable);
         });
+        document.getElementById('fileInput').addEventListener('change', handleFileInput);
 
-        // Helper function to map severity strings to numeric weights for sorting
         function getSeverityWeight(severity) {
             const weights = {
                 'critical': 5,
@@ -234,25 +255,21 @@
             return weights[severity] ?? -1;
         }
 
-        // Sorting logic
         function sortBy(column) {
             if (currentSortColumn === column) {
-                sortAscending = !sortAscending; // toggle direction
+                sortAscending = !sortAscending;
             } else {
                 currentSortColumn = column;
                 sortAscending = true;
             }
 
-            // Update Header arrows
             document.querySelectorAll('th span').forEach(span => span.innerText = '↕️');
             const arrow = sortAscending ? '🔼' : '🔽';
             document.getElementById(`sort-${column}`).innerText = arrow;
-
             renderTable();
         }
 
-        // Render the table based on current data, filter, and sort
-        function renderTable() {
+        function renderTable(emptyMessage) {
             const tbody = document.querySelector('#vulnTable tbody');
             const filters = {
                 severity: document.getElementById('filterSeverity').value,
@@ -261,15 +278,15 @@
                 response: document.getElementById('filterResponse').value
             };
 
-            // 1. Filter
+            if (vulnerabilitiesData.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:20px;">${emptyMessage || 'No vulnerabilities available.'}</td></tr>`;
+                return;
+            }
+
             let filteredData = vulnerabilitiesData.filter(v => {
-                return Object.entries(filters).every(([key, value]) => {
-                    if (value === 'all') return true;
-                    return v[key] === value;
-                });
+                return Object.entries(filters).every(([key, value]) => value === 'all' || v[key] === value);
             });
 
-            // 2. Sort
             if (currentSortColumn) {
                 filteredData.sort((a, b) => {
                     let valA = a[currentSortColumn];
@@ -279,7 +296,6 @@
                         valA = getSeverityWeight(valA);
                         valB = getSeverityWeight(valB);
                     } else {
-                        // Standard string comparison
                         valA = valA.toString().toLowerCase();
                         valB = valB.toString().toLowerCase();
                     }
@@ -290,10 +306,9 @@
                 });
             }
 
-            // 3. Render
             tbody.innerHTML = '';
             if (filteredData.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No vulnerabilities match the current filter.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No vulnerabilities match the current filters.</td></tr>';
                 return;
             }
 
