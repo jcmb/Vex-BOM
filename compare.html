@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Version: 1.1.2 -->
+<!-- Version: 1.1.3 -->
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -439,6 +439,11 @@
                 .replaceAll("'", '&#39;');
         }
 
+        function getSeverityClass(severity) {
+            const allowed = new Set(['critical', 'high', 'medium', 'low', 'none', 'unknown']);
+            return allowed.has(severity) ? severity : 'unknown';
+        }
+
         function getDefaultAnnotation() {
             return {
                 status: 'open',
@@ -871,16 +876,17 @@
                 const renderFieldValue = (record, field) => {
                     if (!record) return '';
                     if (field === 'severity') {
-                        return `<span class="badge sev-${record.severity}">${record.severity}</span>`;
+                        const safeSeverity = getSeverityClass(record.severity);
+                        return `<span class="badge sev-${safeSeverity}">${escapeHtml(record.severity)}</span>`;
                     }
-                    return record[field];
+                    return escapeHtml(record[field]);
                 };
 
                 const topRow = document.createElement('tr');
                 topRow.innerHTML = `
                     <td rowspan="3"><span class="badge change-${item.changeType}">${item.changeType}</span></td>
-                    <td rowspan="3" class="cve-cell"><strong>${formatCveId(item.id)}</strong></td>
-                    <td rowspan="3" class="description-cell">${description}</td>
+                    <td rowspan="3" class="cve-cell"><strong>${escapeHtml(formatCveId(item.id))}</strong></td>
+                    <td rowspan="3" class="description-cell">${escapeHtml(description)}</td>
                     <td class="row-source">Updated</td>
                     <td>${isDifferent('severity') ? renderFieldValue(topRecord, 'severity') : ''}</td>
                     <td>${isDifferent('state') ? renderFieldValue(topRecord, 'state') : ''}</td>

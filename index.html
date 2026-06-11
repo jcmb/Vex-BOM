@@ -157,6 +157,20 @@
             return normalized.length ? normalized : 'N/A';
         }
 
+        function escapeHtml(value) {
+            return String(value)
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#39;');
+        }
+
+        function getSeverityClass(severity) {
+            const allowed = new Set(['critical', 'high', 'medium', 'low', 'none', 'unknown']);
+            return allowed.has(severity) ? severity : 'unknown';
+        }
+
         function parseVulnerabilities(vulnerabilities) {
             return vulnerabilities.map(v => {
                 const rating = (v.ratings && v.ratings.length > 0) ? v.ratings[0] : {};
@@ -314,14 +328,15 @@
 
             filteredData.forEach(v => {
                 const tr = document.createElement('tr');
+                const safeSeverity = getSeverityClass(v.severity);
                 tr.innerHTML = `
-                    <td><strong>${v.id}</strong></td>
-                    <td><span class="badge sev-${v.severity}">${v.severity}</span></td>
-                    <td class="description-cell">${v.description}</td>
-                    <td>${v.state}</td>
-                    <td>${v.justification}</td>
-                    <td>${v.response}</td>
-                    <td>${v.detail}</td>
+                    <td><strong>${escapeHtml(v.id)}</strong></td>
+                    <td><span class="badge sev-${safeSeverity}">${escapeHtml(v.severity)}</span></td>
+                    <td class="description-cell">${escapeHtml(v.description)}</td>
+                    <td>${escapeHtml(v.state)}</td>
+                    <td>${escapeHtml(v.justification)}</td>
+                    <td>${escapeHtml(v.response)}</td>
+                    <td>${escapeHtml(v.detail)}</td>
                 `;
                 tbody.appendChild(tr);
             });
